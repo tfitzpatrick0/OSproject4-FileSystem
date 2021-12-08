@@ -1,0 +1,8 @@
+bin/unit_*
+bin/run_*.sh
+bin/sfssh
+data/image.unit
+lib/lib*.a
+test.log
+*.o
+*.swp

@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 /* Internal Prototypes */
 
 void    fs_initialize_free_block_bitmap(FileSystem *fs);
@@ -15,7 +14,6 @@ void    disk_clear_data(Disk *disk);
 
 bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node);
 bool    fs_save_inode(FileSystem *fs, size_t inode_number, Inode *node);
-
 
 /* External Functions */
 
@@ -44,24 +42,21 @@ void    fs_debug(Disk *disk) {
     printf("    %u inodes\n"         , block.super.inodes);
 
     /* Read Inodes */
-
-    Block inodeBlock;
+    Block iblock;
     
     // loop through inode blocks
-    for (uint32_t i = 1; i <= block.super.inode_blocks; ++i) {
+    for (uint32_t i = 1; i < block.super.inode_blocks; ++i) {
         // read inode block
-        disk_read(disk, i, inodeBlock.data);
+        disk_read(disk, i, iblock.data);
 
         // loop through inodes in inode block
         for (uint32_t j = 0; j < INODES_PER_BLOCK; ++j) {
-            Inode inode = inodeBlock.inodes[j];
-
+            Inode inode = iblock.inodes[j];
             if (inode.valid) {
                 printf("\n");
                 printf("Inode %u:\n", i);
                 printf("    size: %u\n", inode.size);
                 printf("    direct blocks: %lu\n", (sizeof(inode.direct) / sizeof(uint32_t)));
-
             }
 
             // loop through direct pointers
@@ -75,23 +70,20 @@ void    fs_debug(Disk *disk) {
                 printf("    indirect block: %lu\n", (unsigned long)(inode.indirect));
                 printf("    indirect data blocks:");
 
-
-                Block pointerBlock;
-                disk_read(disk, inode.indirect, pointerBlock.data);
+                Block inblock;
+                disk_read(disk, inode.indirect, inblock.data);
                 // loop through indirect pointers
                 for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
-                    if (pointerBlock.pointers[a]){
-                        printf(" %d",(pointerBlock.pointers[a]));
-
+                    if (inblock.pointers[a]){
+                        printf(" %d",(inblock.pointers[a]));
                     }
                 }
             }
         }
-
     }
 }
 
-
+/*
 * in disk.c
 *
 // helper function to clear data other than super block
@@ -102,10 +94,9 @@ void disk_clear_data(Disk *disk) {
     }
     for (size_t j = 1; j < disk->blocks; ++j) {
         disk_write(disk, j, empty.data);
-
     }
 }
-
+*/
 
 /**
  * Format Disk by doing the following:
@@ -175,11 +166,9 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
         return false;
     }
 
-
     // verify SuperBlock
     Block superBlock;
     disk_read(disk, 0, superBlock.data);
-
     
     // magic number
     if (superBlock.super.magic_number != MAGIC_NUMBER) {
@@ -207,7 +196,7 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
     if (superBlock.super.inodes != superBlock.super.inode_blocks * INODES_PER_BLOCK) {
         return false;
     }
-
+    
     // record file system disk attributes
     fs->disk = disk;
 
@@ -217,12 +206,48 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
     fs->meta_data.inode_blocks = superBlock.super.inode_blocks;
     fs->meta_data.inodes = superBlock.super.inodes;
 
-
     // initalize free blocks bitmap
     fs->free_blocks = malloc(fs->meta_data.blocks * sizeof(bool));
     fs_initialize_free_block_bitmap(fs); 
     
-    
+    // mark inodes, the direct blocks, the indirect blocks, and the pointers in the indirect blocks
+    Block inodeBlock;
+    for (uint32_t i = 0; i < fs->meta_data.inode_blocks; ++i) {
+        
+        disk_read(disk, i+1, inodeBlock.data);
+
+        // loop through inodes in the inode block
+        for (uint32_t j = 0; j < INODES_PER_BLOCK; ++j) {
+            Inode inode = inodeBlock.inodes[j];
+            
+            // check if valid
+            if (inode.valid) {
+                    
+                // loop through direct pointers
+                for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
+                    if (inode.direct[k]) {
+                        fs->free_blocks[inode.direct[k]] = false;
+                    }
+                }
+
+                // check indirect pointer
+                if (inode.indirect) {
+                    fs->free_blocks[inode.indirect] = false;
+
+                    Block pointerBlock;
+                    disk_read(disk, inode.indirect, pointerBlock.data);
+
+                    // loop through indirect block
+                    for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
+                        if (pointerBlock.pointers[a]) {
+                            fs->free_blocks[pointerBlock.pointers[a]] = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     return true;
 }
 
@@ -313,12 +338,20 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
         return false;
     }
 
+    // free direct blocks
     for (uint32_t i = 0; i < POINTERS_PER_INODE; ++i) {
         remove_inode.direct[i] = 0;
         fs->free_blocks[remove_inode.direct[i]] = true;
     }
 
-    return false;
+    // free indirect blocks
+    if (remove_node.indirect) {
+        Block pointerBlock;
+        disk_read(fs->disk, remove_node.indirect, pointerBlock.data);
+        for (uint32_t i = 0)
+    }
+    
+    return true;
 }
 
 // load inode from specified number into Inode structure
@@ -408,7 +441,6 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
 }
 
 
-
 // helper function to initialize bitmap
 void    fs_initialize_free_block_bitmap(FileSystem *fs) {
 
@@ -419,49 +451,11 @@ void    fs_initialize_free_block_bitmap(FileSystem *fs) {
 
     // set super block to false (Occupied)
     fs->free_blocks[0] = false;
-    
-    // mark inodes, the direct blocks, the indirect blocks, and the pointers in the indirect blocks
-    Block inodeBlock;
-    for (uint32_t i = 0; i < fs->meta_data.inode_blocks; ++i) {
+
+    // set inode blocks to false (Occupied)
+    for (uint32_t i = 0; i < fs->meta_data.inode_blocks; i++) {
         fs->free_blocks[i+1] = false;
-        
-        disk_read(disk, i+1, inodeBlock.data);
-
-        // loop through inodes in the inode block
-
-        for (uint32_t j = 0; j < INODES_PER_BLOCK; ++j) {
-            Inode inode = inodeBlock.inodes[j];
-            
-            // check if valid
-            if (inode.valid) {
-                    
-                // loop through direct pointers
-                for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
-                    if (inode.direct[k]) {
-                        fs->free_blocks[inode.direct[k]] = false;
-                    }
-                }
-
-                // check indirect pointer
-                if (inode.indirect) {
-                    fs->free_blocks[inode.indirect] = false;
-
-                    Block pointerBlock;
-                    disk_read(disk, inode.indirect, pointerBlock.data);
-
-                    // loop through indirect block
-                    for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
-
-                        if (pointerBlock.pointers[a]) {
-                            fs->free_blocks[pointerBlock.pointers[a]] = false;
-
-                        }
-                    }
-                }
-            }
-        }
     }
-
 }
 
 // helper function to clear data other than super block
@@ -478,44 +472,5 @@ void    disk_clear_data(Disk *disk) {
         disk_write(disk, j, block.data);
     }
 }
-
-
-
-
-// load inode from specified number into Inode structure
-bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {
-    Block inodeBlock;
-    
-    // sanity check
-    if (fs->disk == NULL) {
-        return false;
-    }
-
-    // calculate block to read from
-    size_t inode_block_num = (inode_number / INODES_PER_BLOCK) + 1;
-
-    if (inode_block_num > fs.meta_data.inode_blocks) {
-        return false;
-    }
-    
-    // calculate inode in block to get
-    uint32_t inode_num = (inode_number % INODES_PER_BLOCK)
-
-    
-    // read from disk
-    disk_read(fs->disk, inode_block_num, inodeBlock.data);
-
-    // set output
-    node = inodeBlock.inodes[inode_num];
-    
-    // check node is valid before returning
-    if (!node.valid) {
-        return false;
-    }    
-
-    return true;
-
-}
-
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */

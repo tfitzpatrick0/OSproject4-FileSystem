@@ -6,8 +6,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#include <sfs/fs.h>
-
 /* Disk Constants */
 
 #define BLOCK_SIZE      (1<<12)

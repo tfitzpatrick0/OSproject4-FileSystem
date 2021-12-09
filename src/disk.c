@@ -9,7 +9,6 @@
 /* Internal Prototyes */
 
 bool    disk_sanity_check(Disk *disk, size_t blocknum, const char *data);
-void    disk_clear_data(Disk *disk);
 
 /* External Functions */
 
@@ -222,18 +221,6 @@ bool    disk_sanity_check(Disk *disk, size_t block, const char *data) {
     }
     
     return true;
-}
-
-// helper function to clear data other than super block
-void    disk_clear_data(Disk *disk) {
-    Block empty;
-    for (int i = 0; i < BLOCK_SIZE; ++i) {
-        empty.data[i] = 0;
-    }
-
-    for (size_t j = 1; j < disk->blocks; ++j) {
-        disk_write(disk, j, empty.data);
-    }
 }
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */

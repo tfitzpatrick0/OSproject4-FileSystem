@@ -324,7 +324,59 @@ ssize_t fs_create(FileSystem *fs) {
  * @return      Whether or not removing the specified Inode was successful.
  **/
 bool    fs_remove(FileSystem *fs, size_t inode_number) {
+
+    // sanity check
+    if (fs->disk == NULL) {
+        return false;
+    }
+
+    // load inode information
+    Inode remove_inode;
+    bool valid_inode = fs_load_inode(fs, inode_number, &remove_inode);
+
+    if (!valid_inode) {
+        return false;
+    }
+
+    for (uint32_t i = 0; i < POINTERS_PER_INODE; ++i) {
+        remove_inode.direct[i] = 0;
+        fs->free_blocks[remove_inode.direct[i]] = true;
+    }
+
     return false;
+}
+
+// load inode from specified number into Inode structure
+bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {
+    Block inodeBlock;
+    
+    // sanity check
+    if (fs->disk == NULL) {
+        return false;
+    }
+
+    // calculate block to read from
+    size_t inode_block_num = (inode_number / INODES_PER_BLOCK) + 1;
+
+    if (inode_block_num > fs.meta_data.inode_blocks) {
+        return false;
+    }
+    
+    // calculate inode in block to get
+    uint32_t inode_num = (inode_number % INODES_PER_BLOCK)
+    
+    // read from disk
+    disk_read(fs->disk, inode_block_num, inodeBlock.data);
+
+    // set output
+    node = inodeBlock.inodes[inode_num];
+    
+    // check node is valid before returning
+    if (!node.valid) {
+        return false;
+    }    
+
+    return true;
 }
 
 /**

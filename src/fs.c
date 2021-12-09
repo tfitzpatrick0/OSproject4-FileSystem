@@ -34,10 +34,44 @@ void    fs_debug(Disk *disk) {
     printf("    %u inodes\n"         , block.super.inodes);
 
     /* Read Inodes */
+    Block iblock;
+    
+    // loop through inode blocks
     for (uint32_t i = 1; i < block.super.inode_blocks; ++i) {
-        
-        printf("Inode %u:\n", i);
-        printf("    size: %u", i);
+        // read inode block
+        disk_read(disk, i, iblock.data);
+
+        // loop through inodes in inode block
+        for (uint32_t j = 0; j < INODES_PER_BLOCK; ++j) {
+            Inode inode = iblock.inodes[j];
+            if (inode.valid) {
+                printf("\n");
+                printf("Inode %u:\n", i);
+                printf("    size: %u\n", inode.size);
+                printf("    direct blocks: %u\n", (sizeof(inode.direct) / sizeof(uint32_t)));
+            }
+
+            // loop through direct pointers
+            for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
+                if (inode.direct[k]) {
+                    printf(" %lu", (unsigned long)(inode.direct[k]));
+                }
+            }
+            if (inode.indirect) {
+                printf("\n");
+                printf("    indirect block: %lu\n", (unsigned long)(inode.indirect));
+                printf("    indirect data blocks:");
+
+                Block inblock;
+                disk_read(disk, inode.indirect, inblock.data);
+                // loop through indirect pointers
+                for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
+                    if (inblock.pointers[a]){
+                        printf(" %d",(inblock.pointers[a]));
+                    }
+                }
+            }
+        }
     }
 }
 

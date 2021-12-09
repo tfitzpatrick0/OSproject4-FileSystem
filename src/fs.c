@@ -11,6 +11,8 @@
 /* Internal Prototypes */
 
 void    fs_initialize_free_block_bitmap(FileSystem *fs);
+bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node);
+bool    fs_save_inode(FileSystem *fs, size_t inode_number, Inode *node);
 
 
 /* External Functions */
@@ -371,6 +373,40 @@ void    fs_initialize_free_block_bitmap(FileSystem *fs) {
 }
 
 
+// load inode from specified number into Inode structure
+bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {
+    Block inodeBlock;
+    
+    // sanity check
+    if (fs->disk == NULL) {
+        return false;
+    }
+
+    // calculate block to read from
+    size_t inode_block_num = (inode_number / INODES_PER_BLOCK) + 1;
+
+    if (inode_block_num > fs.meta_data.inode_blocks) {
+        return false;
+    }
+    
+    // calculate inode in block to get
+    uint32_t inode_num = (inode_number % INODES_PER_BLOCK)
+
+    
+    // read from disk
+    disk_read(fs->disk, inode_block_num, inodeBlock.data);
+
+    // set output
+    node = inodeBlock.inodes[inode_num];
+    
+    // check node is valid before returning
+    if (!node.valid) {
+        return false;
+    }    
+
+    return true;
+
+}
 
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */

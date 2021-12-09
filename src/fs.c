@@ -424,7 +424,14 @@ bool    fs_save_inode(FileSystem *fs, size_t inode_number, Inode *node) {
  * @return      Size of specified Inode (-1 if does not exist).
  **/
 ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
-    return -1;
+    Inode inode;
+    bool valid_inode = fs_load_inode(fs, inode_number, &inode);
+
+    if (!valid_inode) {
+        return -1;
+    }
+
+    return inode.size;
 }
 
 /**

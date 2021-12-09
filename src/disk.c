@@ -107,7 +107,7 @@ void	disk_close(Disk *disk) {
  **/
 ssize_t disk_read(Disk *disk, size_t block, char *data) {
     
-    // make dure disk exists
+    // make sure disk exists
     if (disk == NULL) {
         return DISK_FAILURE;
     }
@@ -125,7 +125,7 @@ ssize_t disk_read(Disk *disk, size_t block, char *data) {
 
     // read the block
     if (read(disk->fd, data, BLOCK_SIZE) != BLOCK_SIZE) {
-        fprintf(stderr, "disk_close: close: %s\n", strerror(errno));
+        fprintf(stderr, "disk_read: unable to read: %s\n", strerror(errno));
         return DISK_FAILURE;
     }
 
@@ -152,7 +152,31 @@ ssize_t disk_read(Disk *disk, size_t block, char *data) {
  *              (BLOCK_SIZE on success, DISK_FAILURE on failure).
  **/
 ssize_t disk_write(Disk *disk, size_t block, char *data) {
-    return DISK_FAILURE;
+
+    // make sure disk exists
+    if (disk == NULL) {
+        return DISK_FAILURE;
+    }
+
+    // sanity check
+    if (!disk_sanity_check(disk, block, data)) {
+        return DISK_FAILURE;
+    }
+
+    // look for the block
+    if (lseek(disk->fd, block * BLOCK_SIZE, SEEK_SET) < 0) {
+        fprintf(stderr, "disk_write: lseek: %s\n", strerror(errno));
+        return DISK_FAILURE;
+    }
+
+    // write the block
+    if (write(disk->fd, data, BLOCK_SIZE) != BLOCK_SIZE) {
+        fprintf(stderr, "disk_write: unable to write: %s\n", strerror(errno));
+        return DISK_FAILURE;
+    }
+
+    ++disk->writes;
+    return BLOCK_SIZE;
 }
 
 /* Internal Functions */
@@ -180,20 +204,18 @@ bool    disk_sanity_check(Disk *disk, size_t block, const char *data) {
         return DISK_FAILURE;
     }
 
-  
-    // check valid block
-
-    // check sought block is positive
+    // check that block is valid
+    // case - sought block is positive
     if (block < 0) {
         return false;
     }
 
-    // check sought block is valid
+    // case - sought block is valid
     if (block >= disk->blocks) {
         return false;
     }
 
-    // check data buffer is valid
+    // case - data buffer is valid
     if (data == NULL) {
         return false;
     }

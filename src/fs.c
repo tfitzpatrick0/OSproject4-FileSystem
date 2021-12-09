@@ -395,7 +395,14 @@ bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {
  * @return      Size of specified Inode (-1 if does not exist).
  **/
 ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
-    return -1;
+    Inode inode;
+    bool valid_inode = fs_load_inode(fs, inode_number, &inode);
+
+    if (!valid_inode) {
+        return -1;
+    }
+
+    return inode.size;
 }
 
 /**
@@ -416,7 +423,69 @@ ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
  * @return      Number of bytes read (-1 on error).
  **/
 ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
-    return -1;
+    // load inode and error check
+    Inode inode;
+
+    bool valid_inode = f_load_inode(fs, inode_number, inode);
+    if (!valid_inode) {
+        fprintf(stderr, "fs_read: invalid inode\n");
+        return -1;
+    }
+    
+    if (length < 0) {
+        fprintf(stderr, "fs_read: length < 0\n");
+        return -1;
+    }
+
+    if (offset < 0) {
+        fprintf(stderr, "fs_read: offset < 0\n");
+        return -1;
+    }
+
+    // block to load data into
+    Block data;
+      
+    // counters  
+    size_t before_offset = offset;
+    ssize_t read_in = 0;
+    
+    
+    for (uint32_t i = 0; i < POINTERS_PER_INODE; ++i) {
+        if (inode.direct[i] == 0) {
+            fprintf(stderr, "fs_read: direct block not found, offset too large\n");
+            return -1; 
+        }
+        
+        disk_read(fs->disk, inode.direct[i], data.data);
+
+        // get to correct starting block
+        if (before_offset < BLOCK_SIZE) {
+            break;
+        }
+        else {
+            before_offset -= BLOCK_SIZE;
+        }
+    }
+    
+    
+    for (uint32_t j = 0; j < POINTERS_PER_BLOCK; ++j) {
+        if (before_offset < BLOCK_SIZE) {
+            break;
+        }
+        else {
+            before_offset -= BLOCK_SIZE;
+        }
+    
+        if (inode.indirect == 0) {
+            fprintf(stderr, "fs_read: indirect block not found, offset too large");
+            return -1;
+        }
+
+        disk_read(fs->disk, inode.indirect[j], data.data);
+        
+    
+    }
+
 }
 
 /**

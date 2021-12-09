@@ -7,6 +7,12 @@
 #include <stdio.h>
 #include <string.h>
 
+
+/* Internal Prototypes */
+
+void    fs_initialize_free_block_bitmap(FileSystem *fs);
+
+
 /* External Functions */
 
 /**
@@ -34,12 +40,61 @@ void    fs_debug(Disk *disk) {
     printf("    %u inodes\n"         , block.super.inodes);
 
     /* Read Inodes */
+    Block iblock;
+    
+    // loop through inode blocks
     for (uint32_t i = 1; i < block.super.inode_blocks; ++i) {
-        
-        printf("Inode %u:\n", i);
-        printf("    size: %u", i);
+        // read inode block
+        disk_read(disk, i, iblock.data);
+
+        // loop through inodes in inode block
+        for (uint32_t j = 0; j < INODES_PER_BLOCK; ++j) {
+            Inode inode = iblock.inodes[j];
+            if (inode.valid) {
+                printf("\n");
+                printf("Inode %u:\n", i);
+                printf("    size: %u\n", inode.size);
+                printf("    direct blocks: %u\n", (sizeof(inode.direct) / sizeof(uint32_t)));
+            }
+
+            // loop through direct pointers
+            for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
+                if (inode.direct[k]) {
+                    printf(" %lu", (unsigned long)(inode.direct[k]));
+                }
+            }
+            if (inode.indirect) {
+                printf("\n");
+                printf("    indirect block: %lu\n", (unsigned long)(inode.indirect));
+                printf("    indirect data blocks:");
+
+                Block inblock;
+                disk_read(disk, inode.indirect, inblock.data);
+                // loop through indirect pointers
+                for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
+                    if (inblock.pointers[a]){
+                        printf(" %d",(inblock.pointers[a]));
+                    }
+                }
+            }
+        }
     }
 }
+
+/*
+* in disk.c
+*
+// helper function to clear data other than super block
+void disk_clear_data(Disk *disk) {
+    Block empty;
+    for (int i = 0; i < BLOCK_SIZE; ++i) {
+        empty.data[i] = 0;
+    }
+    for (size_t j = 1; j < disk->blocks; ++j) {
+        disk_write(disk, j, empty.data);
+    }
+}
+*/
 
 /**
  * Format Disk by doing the following:
@@ -56,7 +111,34 @@ void    fs_debug(Disk *disk) {
  * @return      Whether or not all disk operations were successful.
  **/
 bool    fs_format(FileSystem *fs, Disk *disk) {
-    return false;
+    // make sure not already mounted
+    if (fs->disk == disk) {
+        return false;
+    }
+
+    // write SuperBlock
+    Block superBlock;
+    superBlock.super.magic_number = MAGIC_NUMBER;
+    superBlock.super.blocks = disk->blocks;
+
+    // 10% of blocks must be inode blocks
+    if (disk->blocks % 10 == 0) {
+        superBlock.super.inode_blocks = disk->blocks / 10;
+    }
+    else {
+        superBlock.super.inode_blocks = (disk->blocks / 10) + 1;
+    }
+
+    superBlock.super.inodes = superBlock.super.inode_blocks * INODES_PER_BLOCK;
+
+    // write super block to first block on the disk
+    disk_write(disk, 0, superBlock.data);
+    
+
+    // clear rest of the blocks in the disk
+    disk_clear_data(disk);
+
+    return true;
 }
 
 /**
@@ -77,7 +159,72 @@ bool    fs_format(FileSystem *fs, Disk *disk) {
  * @return      Whether or not the mount operation was successful.
  **/
 bool    fs_mount(FileSystem *fs, Disk *disk) {
-    return false;
+   // make sure not already mounted
+    if (fs->disk == disk) {
+        return false;
+    }
+ 
+
+    // verify SuperBlock
+    
+    Block superBlock = disk_read(disk, 0, superBlock.data);
+    
+    // magic number
+    if (superBlock.super.magic_number != MAGIC_NUMBER) {
+        return false;
+    }
+
+    // blocks
+    if (superBlock.super.blocks != disk->blocks) {
+        return false;
+    }
+
+    // number of inode blocks
+    if (disk->blocks % 10 == 0) {
+        if (superBlock.super.inode_blocks != disk->blocks / 10) {
+            return false;
+        }
+    }
+    else {
+        if (superBlock.super.inode_blocks != (disk->blocks / 10) + 1) {
+            return false;
+        }
+    }
+
+    // number of inodes
+    if (superBlock.super.inodes != superBlock.super.inode_blocks * INODES_PER_BLOCK) {
+        return false;
+    }
+    
+
+    
+    // record file system disk attributes
+    fs->disk = disk;
+    
+
+    // copy super block to meta data
+    fs->meta_data.magic_number = superBlock.super.magic_number;
+    fs->meta_data.blocks = superBlock.super.blocks;
+    fs->meta_data.inode_blocks = superBlock.super.inode_blocks;
+    fs->meta_data.inodes = superBlock.super.inodes;
+
+
+    // initalize free blocks bitmap
+    fs->free_blocks = malloc(fs->meta_data.blocks * sizeof(bool));
+    
+    // initialize bitmap as all values to true
+    fs_initialize_free_block_bitmap(fs);
+    
+    // super block is not free
+    fs->free_blocks[0] = false;   
+     
+    // mark inodes
+    for (uint32_t i = 1; i < fs->meta_data.inode_blocks; i++) {
+
+    }
+    
+
+    return true;
 }
 
 /**
@@ -179,5 +326,16 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
     return -1;
 }
+
+
+// sets all values in bitmap to true
+void    fs_initialize_free_block_bitmap(FileSystem *fs) {
+    for (uint32_t i; i < fs->meta_data.blocks; ++i) {       
+        fs->free_blocks[i] = true;
+    }
+}
+
+
+
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */

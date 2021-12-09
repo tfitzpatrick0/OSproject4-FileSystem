@@ -34,6 +34,11 @@ void    fs_debug(Disk *disk) {
     printf("    %u inodes\n"         , block.super.inodes);
 
     /* Read Inodes */
+    for (uint32_t i = 1; i < block.super.inode_blocks; ++i) {
+        
+        printf("Inode %u:\n", i);
+        printf("    size: %u", i);
+    }
 }
 
 /**

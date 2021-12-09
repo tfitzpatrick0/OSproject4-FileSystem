@@ -29,7 +29,30 @@ bool    disk_sanity_check(Disk *disk, size_t blocknum, const char *data);
  * @return      Pointer to newly allocated and configured Disk structure (NULL
  *              on failure).
  **/
+
+
 Disk *	disk_open(const char *path, size_t blocks) {
+
+    // allocate disk structure
+    Disk *disk = malloc(sizeof(Disk));
+    
+    disk->blocks = 0;
+    disk->reads = 0;
+    disk->writes = 0;
+
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "open: %s\n", strerror(errno));
+        return 1;
+    }
+
+    int ftruncate(fd, blocks * BLOCK_SIZE);
+
+    disk->fd = fd;
+
+    close(fd);
+
+
     return NULL;
 }
 

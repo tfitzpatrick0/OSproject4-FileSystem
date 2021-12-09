@@ -241,4 +241,4 @@ void    disk_clear_data(Disk *disk) {
 
 
 
-/* vim: set expandtab sts=4 sw=:4 ts=8 ft=c: */
+/* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */

@@ -126,7 +126,7 @@ ssize_t disk_read(Disk *disk, size_t block, char *data) {
 
     // read the block
     if (read(disk->fd, data, BLOCK_SIZE) != BLOCK_SIZE) {
-        fprintf(stderr, "disk_close: close: %s\n", strerror(errno));
+        fprintf(stderr, "disk_read: close: %s\n", strerror(errno));
         return DISK_FAILURE;
     }
 
@@ -217,4 +217,4 @@ void    disk_clear_data(Disk *disk) {
 
 
 
-/* vim: set expandtab sts=4 sw=:4 ts=8 ft=c: */
+/* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */

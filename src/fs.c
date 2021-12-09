@@ -40,16 +40,16 @@ void    fs_debug(Disk *disk) {
     printf("    %u inodes\n"         , block.super.inodes);
 
     /* Read Inodes */
-    Block iblock;
+    Block inodeBlock;
     
     // loop through inode blocks
-    for (uint32_t i = 1; i < block.super.inode_blocks; ++i) {
+    for (uint32_t i = 1; i <= block.super.inode_blocks; ++i) {
         // read inode block
-        disk_read(disk, i, iblock.data);
+        disk_read(disk, i, inodeBlock.data);
 
         // loop through inodes in inode block
         for (uint32_t j = 0; j < INODES_PER_BLOCK; ++j) {
-            Inode inode = iblock.inodes[j];
+            Inode inode = inodeBlock.inodes[j];
             if (inode.valid) {
                 printf("\n");
                 printf("Inode %u:\n", i);
@@ -68,12 +68,12 @@ void    fs_debug(Disk *disk) {
                 printf("    indirect block: %lu\n", (unsigned long)(inode.indirect));
                 printf("    indirect data blocks:");
 
-                Block inblock;
-                disk_read(disk, inode.indirect, inblock.data);
+                Block pointerBlock;
+                disk_read(disk, inode.indirect, pointerBlock.data);
                 // loop through indirect pointers
                 for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
-                    if (inblock.pointers[a]){
-                        printf(" %d",(inblock.pointers[a]));
+                    if (pointerBlock.pointers[a]){
+                        printf(" %d",(pointerBlock.pointers[a]));
                     }
                 }
             }
@@ -219,9 +219,43 @@ bool    fs_mount(FileSystem *fs, Disk *disk) {
     // super block is not free
     fs->free_blocks[0] = false;   
      
-    // mark inodes
-    for (uint32_t i = 1; i < fs->meta_data.inode_blocks; i++) {
+    // mark inodes, the direct blocks, the indirect blocks, and the pointers in the indirect blocks
+    for (uint32_t i = 1; i <= fs->meta_data.inode_blocks; ++i) {
+        fs->free_blocks[i] = false; 
+        
+        Block inodeBlock;
+        disk_read(disk, i, inodeBlock.data);
 
+        // loop through inodes in the inode blok
+        for (uint32_t j = 0; j < INODES_PER_BLOCK; ++j) {
+            Inode inode = inodeBlock.inodes[j];
+            
+            // check if valid
+            if (inode.valid) {
+                    
+                // loop through direct pointers
+                for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
+                    if (inode.direct[k]) {
+                        fs->free_blocks[inode.direct[k]] = false;
+                    }
+                }
+
+                // check indirect pointer
+                if (inode.indirect) {
+                    fs->free_blocks[inode.indirect] = false;
+
+                    Block pointerBlock;
+                    disk_read(disk, inode.indirect, pointerBlock.data);
+
+                    // loop through indirect block
+                    for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
+                        if (pointerBlock[a]) {
+                            fs->free_blocks[pointerBlock[a]] = false;
+                        }
+                    }
+                }
+            }
+        }
     }
     
 
@@ -331,7 +365,7 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
 
 // sets all values in bitmap to true
 void    fs_initialize_free_block_bitmap(FileSystem *fs) {
-    for (uint32_t i; i < fs->meta_data.blocks; ++i) {       
+    for (uint32_t i = 0; i < fs->meta_data.blocks; ++i) {       
         fs->free_blocks[i] = true;
     }
 }

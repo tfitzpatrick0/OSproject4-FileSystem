@@ -6,9 +6,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-/* Internal Prototyes */
+/* Internal Prototypes */
 
 bool    disk_sanity_check(Disk *disk, size_t blocknum, const char *data);
+void    disk_clear_data(Disk *disk);
 
 /* External Functions */
 
@@ -173,7 +174,7 @@ ssize_t disk_write(Disk *disk, size_t block, char *data) {
  * @return      Whether or not it is safe to perform a read/write operation
  *              (true for safe, false for unsafe).
  **/
-bool    disk_sanity_check(Disk *disk, size_t block, const char *data) {
+bool    disk_sanity_check(Disk *disk, size_t blocknum, const char *data) {
     
     // check for valid disk
     if (disk == NULL) {
@@ -184,12 +185,12 @@ bool    disk_sanity_check(Disk *disk, size_t block, const char *data) {
     // check valid block
 
     // check sought block is positive
-    if (block < 0) {
+    if (blocknum < 0) {
         return false;
     }
 
     // check sought block is valid
-    if (block >= disk->blocks) {
+    if (blocknum >= disk->blocks) {
         return false;
     }
 
@@ -201,4 +202,19 @@ bool    disk_sanity_check(Disk *disk, size_t block, const char *data) {
     return true;
 }
 
-/* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */
+
+// helper function to clear data other than super block
+void    disk_clear_data(Disk *disk) {
+    Block empty;
+    for (int i = 0; i < BLOCK_SIZE; ++i) {
+        empty.data[i] = 0;
+    }
+
+    for (size_t j = 1; j < disk->blocks; ++j) {
+        disk_write(disk, j, empty.data);
+    }
+}
+
+
+
+/* vim: set expandtab sts=4 sw=:4 ts=8 ft=c: */

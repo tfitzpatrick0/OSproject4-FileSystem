@@ -10,6 +10,7 @@
 /* Internal Prototypes */
 
 void    fs_initialize_free_block_bitmap(FileSystem *fs);
+ssize_t fs_allocate_free_block(FileSystem *fs);
 void    disk_clear_data(Disk *disk);
 
 bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node);
@@ -364,58 +365,6 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
     return (fs_save_inode(fs, inode_number, &remove_inode));
 }
 
-// load inode from specified number into Inode structure
-bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {  
-    Block inodeBlock;
-
-    // calculate block to read from
-    size_t inode_block_num = (inode_number / INODES_PER_BLOCK) + 1;
-
-    if (inode_block_num > fs->meta_data.inode_blocks) {
-        return false;
-    }
-    
-    // read from disk
-    disk_read(fs->disk, inode_block_num, inodeBlock.data);
-
-    // calculate inode in block to get
-    uint32_t inode_offset = (inode_number % INODES_PER_BLOCK);
-
-    // set output
-    *node = inodeBlock.inodes[inode_offset];
-    
-    // check node is valid before returning
-    if (!node->valid) {
-        return false;
-    }    
-
-    return true;
-}
-
-// save inode 
-bool    fs_save_inode(FileSystem *fs, size_t inode_number, Inode *node) {
-    Block inodeBlock;
-
-    // calculate block to read from
-    size_t inode_block_num = (inode_number / INODES_PER_BLOCK) + 1;
-
-    if (inode_block_num > fs->meta_data.inode_blocks) {
-        return false;
-    }
-
-    // read from disk
-    disk_read(fs->disk, inode_block_num, inodeBlock.data);
-
-    // calculate inode in block to get
-    uint32_t inode_offset = (inode_number % INODES_PER_BLOCK);
-
-    // set inodeblock to write back to disk
-    inodeBlock.inodes[inode_offset] = *node;
-
-    disk_write(fs->disk, inode_block_num, inodeBlock.data);
-    return true;
-}
-
 /**
  * Return size of specified Inode.
  *
@@ -630,9 +579,92 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
  * @return      Number of bytes read (-1 on error).
  **/
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
-    return -1;
-}
 
+    if (!fs || length < 0 || offset < 0) {
+        return -1;
+    }
+
+    fprintf(stderr, "No segfault at start, offset = %u\n", offset);
+
+    Inode write_inode;
+    if (!fs_load_inode(fs, inode_number, &write_inode)) {
+        return -1;
+    }
+
+    fprintf(stderr, "load inode works\n");
+
+    ssize_t bytes_written = 0;
+
+    size_t total_blocks = (length / BLOCK_SIZE) + 1;
+    size_t direct_block = 0;
+    // Block pointerBlock;
+
+    fprintf(stderr, "total_blocks = %u\n", total_blocks);
+
+    Block buffer;
+    fprintf(stderr, "Before strncpy\n");
+    strncpy(buffer.data, data, BUFSIZ*4);
+    fprintf(stderr, "Buffer: %s\n", buffer.data);
+
+    if (!write_inode.indirect) {
+        // allocate a block
+        ssize_t block_num = fs_allocate_free_block(fs);
+        
+        // inode tracks block as a direct block
+        write_inode.direct[0] = block_num;
+
+        fprintf(stderr, "Allocated block: %u\n", block_num);
+
+        // write to the block
+        bytes_written += disk_write(fs->disk, block_num, buffer.data);
+
+        fprintf(stderr, "Write success\n");
+    }
+
+    /*
+    for (uint32_t i = 0; i < total_blocks; i++) {
+
+        Block buffer;
+        fprintf(stderr, "Before strncpy\n");
+        strncpy(buffer.data, data, BUFSIZ*4);
+        fprintf(stderr, "Buffer: %s\n", buffer.data);
+
+        if (!write_inode.indirect) {
+            // allocate a block
+            ssize_t block_num = fs_allocate_free_block(fs);
+            
+            // inode tracks block as a direct block
+            write_inode.direct[i] = block_num;
+
+            fprintf(stderr, "Allocated block: %u\n", block_num);
+
+            // write to the block
+            bytes_written += disk_write(fs->disk, block_num, buffer.data);
+
+            fprintf(stderr, "Write success\n");
+
+            // set an indirect block if 5 direct blocks are allocated
+            // 0 index: index 4 is fifth block
+            if (i == 4) {
+                write_inode.indirect = fs_allocate_free_block(fs);
+            }
+        }
+        else {
+            // allocate a block
+            ssize_t block = fs_allocate_free_block(fs);
+
+            // pointerBlock tracks block as an indirect block
+            pointerBlock.pointers[i-5] = block;
+
+            // write to the block
+            bytes_written += disk_write(fs, block, buffer.data);
+        }
+    }
+    */
+
+    fprintf(stderr, "About to return, bytes_written = %d\n", bytes_written);
+    return bytes_written;
+}
 
 // helper function to initialize bitmap
 void    fs_initialize_free_block_bitmap(FileSystem *fs) {
@@ -651,6 +683,21 @@ void    fs_initialize_free_block_bitmap(FileSystem *fs) {
     }
 }
 
+// helper function to allocate a free block
+ssize_t fs_allocate_free_block(FileSystem *fs) {
+
+    // loop through free blocks bitmap
+    for (uint32_t i = 0; i < fs->meta_data.blocks; i++) {
+        if (fs->free_blocks[i] == true) {
+
+            // If a free block is found, occupy it and return the block number
+            fs->free_blocks[i] == false;
+            return i;
+        }
+    }
+    return -1;
+}
+
 // helper function to clear data other than super block
 void    disk_clear_data(Disk *disk) {
 
@@ -664,6 +711,59 @@ void    disk_clear_data(Disk *disk) {
     for (size_t j = 1; j < disk->blocks; ++j) {
         disk_write(disk, j, block.data);
     }
+}
+
+
+// helper function to load inode @ inode_number into node
+bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {  
+    Block inodeBlock;
+
+    // calculate block to read from
+    size_t inode_block_num = (inode_number / INODES_PER_BLOCK) + 1;
+
+    if (inode_block_num > fs->meta_data.inode_blocks) {
+        return false;
+    }
+    
+    // read from disk
+    disk_read(fs->disk, inode_block_num, inodeBlock.data);
+
+    // calculate inode in block to get
+    uint32_t inode_offset = (inode_number % INODES_PER_BLOCK);
+
+    // set output
+    *node = inodeBlock.inodes[inode_offset];
+    
+    // check node is valid before returning
+    if (!node->valid) {
+        return false;
+    }    
+
+    return true;
+}
+
+// helper function to save data in node to inode @ inode_number
+bool    fs_save_inode(FileSystem *fs, size_t inode_number, Inode *node) {
+    Block inodeBlock;
+
+    // calculate block to read from
+    size_t inode_block_num = (inode_number / INODES_PER_BLOCK) + 1;
+
+    if (inode_block_num > fs->meta_data.inode_blocks) {
+        return false;
+    }
+
+    // read from disk
+    disk_read(fs->disk, inode_block_num, inodeBlock.data);
+
+    // calculate inode in block to get
+    uint32_t inode_offset = (inode_number % INODES_PER_BLOCK);
+
+    // set inodeblock to write back to disk
+    inodeBlock.inodes[inode_offset] = *node;
+
+    disk_write(fs->disk, inode_block_num, inodeBlock.data);
+    return true;
 }
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */

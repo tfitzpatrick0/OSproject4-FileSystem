@@ -40,48 +40,52 @@ void    fs_debug(Disk *disk) {
         (block.super.magic_number == MAGIC_NUMBER) ? "valid" : "invalid");
     printf("    %u blocks\n"         , block.super.blocks);
     printf("    %u inode blocks\n"   , block.super.inode_blocks);
-    printf("    %u inodes\n"         , block.super.inodes);
+    printf("    %u inodes"         , block.super.inodes);
 
     /* Read Inodes */
     Block iblock;
     
     // loop through inode blocks
-    for (uint32_t i = 1; i < block.super.inode_blocks; ++i) {
+    for (uint32_t i = 0; i < block.super.inode_blocks; ++i) {
         // read inode block
-        disk_read(disk, i, iblock.data);
+        disk_read(disk, i+1, iblock.data);
 
         // loop through inodes in inode block
         for (uint32_t j = 0; j < INODES_PER_BLOCK; ++j) {
             Inode inode = iblock.inodes[j];
             if (inode.valid) {
                 printf("\n");
-                printf("Inode %u:\n", i);
-                printf("    size: %u\n", inode.size);
-                printf("    direct blocks: %lu\n", (sizeof(inode.direct) / sizeof(uint32_t)));
-            }
+                printf("Inode %u:\n", (i * INODES_PER_BLOCK) + j);
+                printf("    size: %u bytes\n", inode.size);
+                printf("    direct blocks:");
+            
 
-            // loop through direct pointers
-            for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
-                if (inode.direct[k]) {
-                    printf(" %lu", (unsigned long)(inode.direct[k]));
-                }
-            }
-            if (inode.indirect) {
-                printf("\n");
-                printf("    indirect block: %lu\n", (unsigned long)(inode.indirect));
-                printf("    indirect data blocks:");
-
-                Block inblock;
-                disk_read(disk, inode.indirect, inblock.data);
-                // loop through indirect pointers
-                for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
-                    if (inblock.pointers[a]){
-                        printf(" %d",(inblock.pointers[a]));
+                // loop through direct pointers
+                for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
+                    //printf("\nk = %u\n", k);
+                    if (inode.direct[k]) {
+                        printf(" %lu", (unsigned long)(inode.direct[k]));
                     }
+                }
+                if (inode.indirect) { 
+                    printf("\n");
+                    printf("    indirect block: %lu\n", (unsigned long)(inode.indirect));
+                    printf("    indirect data blocks:");
+
+                    Block inblock;
+                    disk_read(disk, inode.indirect, inblock.data);
+                    // loop through indirect pointers
+                    for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
+                        if (inblock.pointers[a]){
+                            printf(" %d",(inblock.pointers[a]));
+                        }
+                    }
+
                 }
             }
         }
     }
+    printf("\n");
 }
 
 /*
@@ -328,12 +332,14 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
 
     // sanity check
     if (!fs) {
+        fprintf(stderr, "No fs");
         return false;
     }
 
     // load inode information
     Inode remove_inode;
     if (!fs_load_inode(fs, inode_number, &remove_inode)) {
+        fprintf(stderr, "load inode error\n");
         return false;
     }
 
@@ -377,6 +383,7 @@ ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
     bool valid_inode = fs_load_inode(fs, inode_number, &inode);
 
     if (!valid_inode) {
+        fprintf(stderr, "fs_stat: load inode failed\n");
         return -1;
     }
 
@@ -458,7 +465,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
         // make sure indirect block exists
         // *** could use free list
         if (inode.indirect == 0) {
-            fprintf(stderr, "fs_read: indirect block not found, offset too large");
+            fprintf(stderr, "fs_read: indirect block not found, offset too large\n");
             return -1;
         }
        
@@ -487,7 +494,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     }
         
     if (before_offset >= BLOCK_SIZE) {
-        fprintf(stderr, "fs_read: all indirect blocks checked, offset too large");
+        fprintf(stderr, "fs_read: all indirect blocks checked, offset too large\n");
         return -1;
     }
 
@@ -691,7 +698,7 @@ ssize_t fs_allocate_free_block(FileSystem *fs) {
         if (fs->free_blocks[i] == true) {
 
             // If a free block is found, occupy it and return the block number
-            fs->free_blocks[i] == false;
+            fs->free_blocks[i] = false;
             return i;
         }
     }
@@ -722,6 +729,7 @@ bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {
     size_t inode_block_num = (inode_number / INODES_PER_BLOCK) + 1;
 
     if (inode_block_num > fs->meta_data.inode_blocks) {
+        fprintf(stderr, "fs_load: block num > blocks\nblock_num = %lu, iblocks = %d", inode_block_num, fs->meta_data.inode_blocks);
         return false;
     }
     
@@ -736,6 +744,7 @@ bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {
     
     // check node is valid before returning
     if (!node->valid) {
+        fprintf(stderr, "fs_load: inode not valid\n");
         return false;
     }    
 

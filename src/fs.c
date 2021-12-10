@@ -455,7 +455,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     // load inode and error check
     Inode inode;
 
-    bool valid_inode = f_load_inode(fs, inode_number, inode);
+    bool valid_inode = fs_load_inode(fs, inode_number, &inode);
     if (!valid_inode) {
         fprintf(stderr, "fs_read: invalid inode\n");
         return -1;
@@ -472,23 +472,30 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     }
 
     // block to load data into
-    Block data;
-      
+    Block dataBlock;
+
+    // block to store indirect pointers
+    Block pointerBlock;
+
     // counters  
     size_t before_offset = offset;
-    ssize_t read_in = 0;
+
+    uint32_t direct_num;
+    uint32_t indirect_num;
     
     
-    for (uint32_t i = 0; i < POINTERS_PER_INODE; ++i) {
-        if (inode.direct[i] == 0) {
+    for (direct_num = 0; direct_num < POINTERS_PER_INODE; ++direct_num) {
+        // *** could use free list
+        if (inode.direct[direct_num] == 0) {
             fprintf(stderr, "fs_read: direct block not found, offset too large\n");
             return -1; 
         }
         
-        disk_read(fs->disk, inode.direct[i], data.data);
+        disk_read(fs->disk, inode.direct[direct_num], dataBlock.data);
 
         // get to correct starting block
         if (before_offset < BLOCK_SIZE) {
+            ++direct_num;
             break;
         }
         else {
@@ -496,24 +503,112 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
         }
     }
     
+    if (before_offset >= BLOCK_SIZE) {
+        
     
-    for (uint32_t j = 0; j < POINTERS_PER_BLOCK; ++j) {
-        if (before_offset < BLOCK_SIZE) {
-            break;
-        }
-        else {
-            before_offset -= BLOCK_SIZE;
-        }
-    
+        // make sure indirect block exists
+        // *** could use free list
         if (inode.indirect == 0) {
             fprintf(stderr, "fs_read: indirect block not found, offset too large");
             return -1;
         }
+       
+        // read in indirect pointer block 
+        disk_read(fs->disk, inode.indirect, pointerBlock.data);
 
-        disk_read(fs->disk, inode.indirect[j], data.data);
-        
-    
+        for (indirect_num = 0; indirect_num < POINTERS_PER_BLOCK; ++indirect_num) {
+            // check for valid data block
+            // *** could use free list
+            if (pointerBlock.pointers[indirect_num] == 0) {
+                fprintf(stderr, "fs_read: indirect block at index not found, offset too large\n");
+                return -1; 
+            }
+            
+            disk_read(fs->disk, pointerBlock.pointers[indirect_num], dataBlock.data);
+
+            // get to correct starting block
+            if (before_offset < BLOCK_SIZE) {
+                ++indirect_num;
+                break;
+            }
+            else {
+                before_offset -= BLOCK_SIZE;
+            }
+        }
     }
+        
+    if (before_offset >= BLOCK_SIZE) {
+        fprintf(stderr, "fs_read: all indirect blocks checked, offset too large");
+        return -1;
+    }
+
+
+    // if we got here, then:
+    // dataBlock should contain the data from the correct block to start with
+    // before_offset should be between 0 and BLOCK_SIZE - 1
+
+    // we need to:
+    // start reading from dataBlock at before_offset
+    // go until no more blocks or length is reached
+
+
+    // output container
+    char *tempData = malloc(sizeof(char) * length);
+
+    // accounting
+    size_t upto = length;
+
+    //read in offset amount and update how much reading remains
+    upto -= snprintf(tempData + strlen(tempData), upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data + offset);    
+
+    // always check if upto > 0
+    for (; direct_num < POINTERS_PER_INODE; ++direct_num) {
+        // *** could use free list
+        if (inode.direct[direct_num] == 0 || upto <= 0) {
+            //fprintf(stderr, "fs_read: direct block not found, offset too large\n");
+            data = tempData;
+            return strlen(data); 
+        }
+
+        // read next data block
+        disk_read(fs->disk, inode.direct[direct_num], dataBlock.data);
+
+        // append to tempData
+        upto -= snprintf(tempData + strlen(tempData), upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data);   
+    }
+
+    // check if there is an indirect block
+    if (inode.indirect == 0) {
+        //fprintf(stderr, "fs_read: indirect block not found, offset too large");
+        data = tempData;
+        return strlen(data); 
+    }
+
+    // read in indirect pointer block 
+    disk_read(fs->disk, inode.indirect, pointerBlock.data);
+    
+
+    for (; indirect_num < POINTERS_PER_BLOCK; ++indirect_num) {
+            // check for valid data block
+            // *** could use free list
+            if (pointerBlock.pointers[indirect_num] == 0 || upto <= 0) {
+                //fprintf(stderr, "fs_read: indirect block at index not found, offset too large\n");
+                //return -1; 
+                data = tempData;
+                return strlen(data);
+            }
+            
+            // read next data block
+            disk_read(fs->disk, pointerBlock.pointers[indirect_num], dataBlock.data);
+
+            // append to tempData
+            upto -= snprintf(tempData + strlen(tempData), upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data); 
+
+    }    
+
+    data = tempData;
+    return strlen(data);
+
 
 }
 

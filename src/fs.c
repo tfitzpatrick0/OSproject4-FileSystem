@@ -111,6 +111,9 @@ bool    fs_format(FileSystem *fs, Disk *disk) {
 
     // write SuperBlock
     Block superBlock;
+    
+    block_clear_data(&superBlock);
+
     superBlock.super.magic_number = MAGIC_NUMBER;
     superBlock.super.blocks = disk->blocks;
 
@@ -413,6 +416,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     // load inode and error check
     Inode inode;
 
+
     bool valid_inode = fs_load_inode(fs, inode_number, &inode);
     if (!valid_inode) {
         fprintf(stderr, "fs_read: invalid inode\n");
@@ -428,6 +432,14 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
         fprintf(stderr, "fs_read: offset < 0\n");
         return -1;
     }
+
+    if (offset == inode.size) {
+        fprintf(stderr, "return HERE?!?");
+        return 0;
+    }
+
+    
+    uint32_t size_check = inode.size;
 
 
     // block to load data into
@@ -519,9 +531,29 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     size_t upto = length;
     
     //tempData = "";    
-  
+    
+    if (size_check > BLOCK_SIZE) {
+
+            // append to tempData
+            upto -= snprintf(tempData, upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data);  
+            
+            size_check -= BLOCK_SIZE;
+        }
+        else {
+            upto -= snprintf(tempData, size_check + 1, "%.*s", BLOCK_SIZE, dataBlock.data);  
+            fprintf(stderr, "should exit here 1\n"); 
+                
+            strcpy(data, tempData);
+        
+            free(tempData);
+
+            return strlen(data); 
+
+
+        }
+
     //read in offset amount and update how much reading remains
-    upto -= snprintf(tempData, upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data + before_offset);    
+    //upto -= snprintf(tempData, upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data + before_offset);    
 
     //fprintf(stderr, "\n\n tempData after first snprintf: %s\n\n", tempData); 
 
@@ -550,9 +582,24 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
         // read next data block
         disk_read(fs->disk, inode.direct[direct_num], dataBlock.data);
 
-        // append to tempData
-        upto -= snprintf(tempData + strlen(tempData), upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data);   
+        if (size_check > BLOCK_SIZE) {
+
+            // append to tempData
+            upto -= snprintf(tempData + strlen(tempData), upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data);  
+            
+            size_check -= BLOCK_SIZE;
+        }
+        else {
+            upto -= snprintf(tempData + strlen(tempData), size_check + 1, "%.*s", BLOCK_SIZE, dataBlock.data);  
+            fprintf(stderr, "should exit here 2\n"); 
+            strcpy(data, tempData);
         
+            free(tempData);
+
+            return strlen(data); 
+
+
+        }
         //fprintf(stderr, "\n\n tempData after another snprintf: %s\n\n", tempData); 
     }
 
@@ -594,9 +641,27 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
             
             // read next data block
             disk_read(fs->disk, pointerBlock.pointers[indirect_num], dataBlock.data);
+            
+            if (size_check > BLOCK_SIZE) {
+
+                // append to tempData
+                upto -= snprintf(tempData + strlen(tempData), upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data);  
+            
+                size_check -= BLOCK_SIZE;
+            }
+            else {
+                upto -= snprintf(tempData + strlen(tempData), size_check + 1, "%.*s", BLOCK_SIZE, dataBlock.data); 
+                fprintf(stderr, "should exit here 3\n"); 
+                strcpy(data, tempData);
+        
+                free(tempData);
+
+                return strlen(data); 
+
+            }
 
             // append to tempData
-            upto -= snprintf(tempData + strlen(tempData), upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data); 
+            //upto -= snprintf(tempData + strlen(tempData), upto + 1, "%.*s", BLOCK_SIZE, dataBlock.data); 
 
     }    
 
@@ -627,6 +692,209 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
  * @param       offset          Byte offset from which to begin writing.
  * @return      Number of bytes written (-1 on error).
  **/
+
+/*
+ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
+
+    //fprintf(stderr, "Starting fs_write\n");
+    //fprintf(stderr, "length = %u\n", length);
+
+    if (!fs || length < 0 || offset < 0) {
+        return -1;
+    }
+
+    Inode write_inode;
+    if (!fs_load_inode(fs, inode_number, &write_inode)) {
+        return -1;
+    }
+
+    // lets see if this helps
+    write_inode.size = 0;
+    for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
+        write_inode.direct[k] = 0;
+    }
+    
+    write_inode.indirect = 0;
+
+    write_inode.valid = 1;
+
+
+    ssize_t bytes_written = 0;
+    Block buffer;
+
+    block_clear_data(&buffer);
+    
+
+    uint32_t total_blks = (length / BLOCK_SIZE);
+    uint32_t remainder = (length % BLOCK_SIZE);
+
+    if (remainder != 0) {
+        total_blks++;
+    }
+
+    //fprintf(stderr, "total_blks = %u, remainder = %u\n", total_blks, remainder);
+
+    for (uint32_t blks = 0; blks < total_blks; blks++) {
+        
+        bool use_indirect = true;
+
+        if ((blks < total_blks-1) || remainder == 0) {
+            bytes_written = (ssize_t)BLOCK_SIZE;
+        
+            strncpy(buffer.data, data+(blks*BLOCK_SIZE), BLOCK_SIZE);
+            //bytes_written += BLOCK_SIZE;
+        }
+        else {
+            strncpy(buffer.data, data+(blks*BLOCK_SIZE), remainder);
+            bytes_written = remainder;
+        }
+
+        // check direct pointers
+        for (uint32_t i = 0; i < POINTERS_PER_INODE; i++) {
+            if (write_inode.direct[i]) {
+                continue;
+            }
+            else {
+                // find available block
+                ssize_t block_num = fs_allocate_free_block(fs);
+
+                if (block_num > fs->meta_data.blocks) {
+                    fprintf(stderr, "no more blocks available, couldnt make direct block %u: exiting write\n", i);
+                    //write_inode.size += bytes_written;
+                    if (!fs_save_inode(fs, inode_number, &write_inode)) {
+                        return -1;
+                    }
+
+                    return write_inode.size;
+
+                }
+
+
+                // clear block
+                Block tempBlock;
+                disk_read(fs->disk, block_num, tempBlock.data);
+            
+                block_clear_data(&tempBlock);
+    
+                disk_write(fs->disk, block_num, tempBlock.data);
+    
+
+                // add block_num to direct pointers list
+                write_inode.direct[i] = block_num;
+                // fprintf(stderr, "\n\nDirect link [%u]: %u\n\n", i, write_inode.direct[i]);
+
+                // write buffer to block @ block_num
+                disk_write(fs->disk, block_num, buffer.data);
+                
+                write_inode.size += bytes_written;    
+
+                // set use_indirect flag to false
+                use_indirect = false;
+
+                // exit loop
+                break;
+            }
+        }
+
+        // Use indirect blocks if direct pointers are full
+        if (use_indirect) {
+
+            if (!write_inode.indirect) {
+                // allocate block to hold indirect pointers
+                write_inode.indirect = fs_allocate_free_block(fs);
+                
+                fprintf(stderr, "indirect block at %u\n", write_inode.indirect);
+                
+                if (write_inode.indirect > fs->meta_data.blocks) {
+                    fprintf(stderr, "no more blocks available, couldnt make indirect block: exiting write\n");
+                    //write_inode.size += bytes_written;
+                    if (!fs_save_inode(fs, inode_number, &write_inode)) {
+                        return -1;
+                    }
+
+                    //return bytes_written;
+                    return write_inode.size;
+
+                }
+
+                fprintf(stderr, "about to clear the indirect block\n");
+        
+                // clear block
+                Block tempBlock;
+                disk_read(fs->disk, write_inode.indirect, tempBlock.data);
+            
+                block_clear_data(&tempBlock);
+    
+                disk_write(fs->disk, write_inode.indirect, tempBlock.data);
+
+                fprintf(stderr, "block has (hopefully) been cleared\n");
+            }
+
+            Block pointerBlock;
+            disk_read(fs->disk, write_inode.indirect, pointerBlock.data);
+
+            // loop through indirect block to find free pointer
+            for (uint32_t i = 0; i < POINTERS_PER_BLOCK; i++) {
+                fprintf(stderr, "was block cleared? who knows, pointerBlock.pointers[%u] = %u\n", i, pointerBlock.pointers[i]);
+                if (!pointerBlock.pointers[i]) {
+
+                    fprintf(stderr, "block pointer %u\n", i);    
+
+                    // find available block
+                    ssize_t block_num = fs_allocate_free_block(fs);
+
+                    if (block_num > fs->meta_data.blocks) {
+                        fprintf(stderr, "no more blocks available, couldnt make indirect pointer: exiting write\n");
+                        //write_inode.size += bytes_written;
+                        if (!fs_save_inode(fs, inode_number, &write_inode)) {
+                            return -1;
+                        }
+
+                        //return bytes_written;
+                        return write_inode.size;
+
+                    }
+
+
+                    fprintf(stderr, "found indirect block pointer %lu\n", block_num);
+
+                    pointerBlock.pointers[i] = block_num;
+
+                
+                    // clear block
+                    Block tempBlock;
+                    disk_read(fs->disk, block_num, tempBlock.data);
+            
+                    block_clear_data(&tempBlock);
+    
+                    disk_write(fs->disk, block_num, tempBlock.data);
+
+
+                    
+                    // write buffer to block @ block_num
+                    disk_write(fs->disk, block_num, buffer.data);
+                    write_inode.size += bytes_written;
+
+
+                    // update indirect pointer block and exit loop
+                    disk_write(fs->disk, write_inode.indirect, pointerBlock.data);
+                    break;
+                }
+            }
+        }
+    }
+
+    write_inode.size += bytes_written;
+    if (!fs_save_inode(fs, inode_number, &write_inode)) {
+        return -1;
+    }
+
+    //fprintf(stderr, "About to return\n\n");
+    return write_inode.size;
+}
+*/
+
+// tim's fs_write
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
 
     //fprintf(stderr, "Starting fs_write\n");
@@ -673,11 +941,11 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
 
         if ((blks < total_blks-1) || remainder == 0) {
             strncpy(buffer.data, data+(blks*BLOCK_SIZE), BLOCK_SIZE);
-            bytes_written += BLOCK_SIZE;
+            bytes_written = (ssize_t)BLOCK_SIZE;
         }
         else {
             strncpy(buffer.data, data+(blks*BLOCK_SIZE), remainder);
-            bytes_written += remainder;
+            bytes_written = remainder;
         }
 
         // check direct pointers
@@ -691,12 +959,12 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
 
                 if (block_num > fs->meta_data.blocks) {
                     fprintf(stderr, "no more blocks available, couldnt make direct block %u: exiting write\n", i);
-                    write_inode.size += bytes_written;
+                    // write_inode.size += bytes_written;
                     if (!fs_save_inode(fs, inode_number, &write_inode)) {
                         return -1;
                     }
 
-                    return bytes_written;
+                    return write_inode.size;
 
                 }
 
@@ -716,6 +984,7 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
 
                 // write buffer to block @ block_num
                 disk_write(fs->disk, block_num, buffer.data);
+                write_inode.size += bytes_written;
 
                 // set use_indirect flag to false
                 use_indirect = false;
@@ -736,12 +1005,12 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
                 
                 if (write_inode.indirect > fs->meta_data.blocks) {
                     fprintf(stderr, "no more blocks available, couldnt make indirect block: exiting write\n");
-                    write_inode.size += bytes_written;
+                    // write_inode.size += bytes_written;
                     if (!fs_save_inode(fs, inode_number, &write_inode)) {
                         return -1;
                     }
 
-                    return bytes_written;
+                    return write_inode.size;
 
                 }
 
@@ -773,12 +1042,12 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
 
                     if (block_num > fs->meta_data.blocks) {
                         fprintf(stderr, "no more blocks available, couldnt make indirect pointer: exiting write\n");
-                        write_inode.size += bytes_written;
+                        // write_inode.size += bytes_written;
                         if (!fs_save_inode(fs, inode_number, &write_inode)) {
                             return -1;
                         }
 
-                        return bytes_written;
+                        return write_inode.size;
 
                     }
 
@@ -800,6 +1069,7 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
                     
                     // write buffer to block @ block_num
                     disk_write(fs->disk, block_num, buffer.data);
+                    write_inode.size += bytes_written;
 
                     // update indirect pointer block and exit loop
                     disk_write(fs->disk, write_inode.indirect, pointerBlock.data);
@@ -809,13 +1079,12 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
         }
     }
 
-    write_inode.size += bytes_written;
     if (!fs_save_inode(fs, inode_number, &write_inode)) {
         return -1;
     }
 
     //fprintf(stderr, "About to return\n\n");
-    return bytes_written;
+    return write_inode.size;
 }
 
 // helper function to initialize bitmap

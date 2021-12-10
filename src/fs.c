@@ -572,8 +572,8 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
  **/
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
 
-    fprintf(stderr, "Starting fs_write\n");
-    fprintf(stderr, "length = %u\n", length);
+    //fprintf(stderr, "Starting fs_write\n");
+    //fprintf(stderr, "length = %u\n", length);
 
     if (!fs || length < 0 || offset < 0) {
         return -1;
@@ -594,19 +594,19 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
         total_blks++;
     }
 
-    fprintf(stderr, "total_blks = %u, remainder = %u\n", total_blks, remainder);
+    //fprintf(stderr, "total_blks = %u, remainder = %u\n", total_blks, remainder);
 
     for (uint32_t blks = 0; blks < total_blks; blks++) {
 
         bool use_indirect = true;
 
-        if (blks < total_blks-1) {
+        if ((blks < total_blks-1) || remainder == 0) {
             strncpy(buffer.data, data+(blks*BLOCK_SIZE), BLOCK_SIZE);
             bytes_written += BLOCK_SIZE;
         }
         else {
-            strcpy(buffer.data, data+(blks*BLOCK_SIZE));
-            bytes_written += (remainder == 0) ? BLOCK_SIZE : remainder;
+            strncpy(buffer.data, data+(blks*BLOCK_SIZE), remainder);
+            bytes_written += remainder;
         }
 
         // check direct pointers
@@ -668,7 +668,7 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
         return -1;
     }
 
-    fprintf(stderr, "About to return\n\n");
+    //fprintf(stderr, "About to return\n\n");
     return bytes_written;
 }
 

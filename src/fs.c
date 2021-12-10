@@ -40,48 +40,52 @@ void    fs_debug(Disk *disk) {
         (block.super.magic_number == MAGIC_NUMBER) ? "valid" : "invalid");
     printf("    %u blocks\n"         , block.super.blocks);
     printf("    %u inode blocks\n"   , block.super.inode_blocks);
-    printf("    %u inodes\n"         , block.super.inodes);
+    printf("    %u inodes"         , block.super.inodes);
 
     /* Read Inodes */
     Block iblock;
     
     // loop through inode blocks
-    for (uint32_t i = 1; i < block.super.inode_blocks; ++i) {
+    for (uint32_t i = 0; i < block.super.inode_blocks; ++i) {
         // read inode block
-        disk_read(disk, i, iblock.data);
+        disk_read(disk, i+1, iblock.data);
 
         // loop through inodes in inode block
         for (uint32_t j = 0; j < INODES_PER_BLOCK; ++j) {
             Inode inode = iblock.inodes[j];
             if (inode.valid) {
                 printf("\n");
-                printf("Inode %u:\n", i);
-                printf("    size: %u\n", inode.size);
-                printf("    direct blocks: %lu\n", (sizeof(inode.direct) / sizeof(uint32_t)));
-            }
+                printf("Inode %u:\n", (i * INODES_PER_BLOCK) + j);
+                printf("    size: %u bytes\n", inode.size);
+                printf("    direct blocks:");
+            
 
-            // loop through direct pointers
-            for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
-                if (inode.direct[k]) {
-                    printf(" %lu", (unsigned long)(inode.direct[k]));
-                }
-            }
-            if (inode.indirect) {
-                printf("\n");
-                printf("    indirect block: %lu\n", (unsigned long)(inode.indirect));
-                printf("    indirect data blocks:");
-
-                Block inblock;
-                disk_read(disk, inode.indirect, inblock.data);
-                // loop through indirect pointers
-                for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
-                    if (inblock.pointers[a]){
-                        printf(" %d",(inblock.pointers[a]));
+                // loop through direct pointers
+                for (uint32_t k = 0; k < POINTERS_PER_INODE; ++k) {
+                    //printf("\nk = %u\n", k);
+                    if (inode.direct[k]) {
+                        printf(" %lu", (unsigned long)(inode.direct[k]));
                     }
+                }
+                if (inode.indirect) { 
+                    printf("\n");
+                    printf("    indirect block: %lu\n", (unsigned long)(inode.indirect));
+                    printf("    indirect data blocks:");
+
+                    Block inblock;
+                    disk_read(disk, inode.indirect, inblock.data);
+                    // loop through indirect pointers
+                    for (uint32_t a = 0; a < POINTERS_PER_BLOCK; ++a) {
+                        if (inblock.pointers[a]){
+                            printf(" %d",(inblock.pointers[a]));
+                        }
+                    }
+
                 }
             }
         }
     }
+    printf("\n");
 }
 
 /**
@@ -313,12 +317,14 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
 
     // sanity check
     if (!fs) {
+        fprintf(stderr, "No fs");
         return false;
     }
 
     // load inode information
     Inode remove_inode;
     if (!fs_load_inode(fs, inode_number, &remove_inode)) {
+        fprintf(stderr, "load inode error\n");
         return false;
     }
 
@@ -362,6 +368,7 @@ ssize_t fs_stat(FileSystem *fs, size_t inode_number) {
     bool valid_inode = fs_load_inode(fs, inode_number, &inode);
 
     if (!valid_inode) {
+        fprintf(stderr, "fs_stat: load inode failed\n");
         return -1;
     }
 
@@ -443,7 +450,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
         // make sure indirect block exists
         // *** could use free list
         if (inode.indirect == 0) {
-            fprintf(stderr, "fs_read: indirect block not found, offset too large");
+            fprintf(stderr, "fs_read: indirect block not found, offset too large\n");
             return -1;
         }
        
@@ -472,7 +479,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     }
         
     if (before_offset >= BLOCK_SIZE) {
-        fprintf(stderr, "fs_read: all indirect blocks checked, offset too large");
+        fprintf(stderr, "fs_read: all indirect blocks checked, offset too large\n");
         return -1;
     }
 
@@ -543,7 +550,6 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     data = tempData;
     return strlen(data);
 
-
 }
 
 /**
@@ -575,18 +581,25 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
     }
 
     ssize_t bytes_written = 0;
-    bool use_indirect = true;
+    Block buffer;
 
     uint32_t total_blks = (length / BLOCK_SIZE);
     if ((length % BLOCK_SIZE) != 0) {
         total_blks++;
     }
 
-    Block buffer;
-    strcpy(buffer.data, data);
-    fprintf(stderr, "\n\n\n\nBuffer data: %s\n", buffer.data);
-
     for (uint32_t blks = 0; blks < total_blks; blks++) {
+
+        bool use_indirect = true;
+
+        if (blks < total_blks-1) {
+            strncpy(buffer.data, data+(blks*4096), 4096);
+        }
+        else {
+            strcpy(buffer.data, data+(blks*4096));
+        }
+
+        fprintf(stderr, "\n\nCurrent buffer data: %s\n", buffer.data);
 
         // check direct pointers
         for (uint32_t i = 0; i < POINTERS_PER_INODE; i++) {
@@ -637,6 +650,9 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
                     
                     // write buffer to block @ block_num
                     bytes_written += disk_write(fs->disk, block_num, buffer.data);
+
+                    // exit loop
+                    break;
                 }
             }
         }
@@ -691,7 +707,6 @@ void    disk_clear_data(Disk *disk) {
         disk_write(disk, j, block.data);
     }
 }
-
 
 // helper function to load inode @ inode_number into node
 bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {  

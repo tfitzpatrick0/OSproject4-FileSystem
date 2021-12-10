@@ -30,7 +30,6 @@ bool    disk_sanity_check(Disk *disk, size_t blocknum, const char *data);
  *              on failure).
  **/
 
-
 Disk *	disk_open(const char *path, size_t blocks) {
 
     // allocate disk structure
@@ -81,8 +80,13 @@ void	disk_close(Disk *disk) {
     }
 
     // report reads and writes
-    printf("reads: %zu", disk->reads);
-    printf("writes: %zu", disk->writes);
+
+    // turning off for debuging function testing
+    // these cause tests to fail
+    /*
+    printf("\nreads: %zu", disk->reads);
+    printf("\nwrites: %zu", disk->writes);
+    */
 
     // free disk
     free(disk);

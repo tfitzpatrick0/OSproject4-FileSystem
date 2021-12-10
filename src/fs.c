@@ -12,6 +12,7 @@
 void    fs_initialize_free_block_bitmap(FileSystem *fs);
 ssize_t fs_allocate_free_block(FileSystem *fs);
 void    disk_clear_data(Disk *disk);
+void    block_clear_data(Block block);
 
 bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node);
 bool    fs_save_inode(FileSystem *fs, size_t inode_number, Inode *node);
@@ -289,7 +290,13 @@ ssize_t fs_create(FileSystem *fs) {
 
             // find free inode in current inode block and create inode
             if (!block.inodes[j].valid) {
+
+                // lets see if this helps
+                block_clear_data(block);
+
+
                 block.inodes[j].valid = 1;
+
                 disk_write(fs->disk, i+1, block.data);
 
                 // return the created inode block number
@@ -741,6 +748,15 @@ void    disk_clear_data(Disk *disk) {
         disk_write(disk, j, block.data);
     }
 }
+
+
+// helper function to clear a single block data
+void    block_clear_data(Block block) {
+    for (size_t i = 0; i < BLOCK_SIZE; ++i) {
+        block.data[i] = 0;
+    }
+}
+
 
 // helper function to load inode @ inode_number into node
 bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {  

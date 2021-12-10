@@ -81,8 +81,13 @@ void	disk_close(Disk *disk) {
     }
 
     // report reads and writes
-    printf("reads: %zu", disk->reads);
-    printf("writes: %zu", disk->writes);
+
+    // turning off for debuging function testing
+    // these cause tests to fail
+    /*
+    printf("\nreads: %zu", disk->reads);
+    printf("\nwrites: %zu", disk->writes);
+    */
 
     // free disk
     free(disk);

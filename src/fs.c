@@ -453,7 +453,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
             fprintf(stderr, "fs_read: indirect block not found, offset too large\n");
             return -1;
         }
-       
+
         // read in indirect pointer block 
         disk_read(fs->disk, inode.indirect, pointerBlock.data);
 
@@ -599,8 +599,6 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
             strcpy(buffer.data, data+(blks*4096));
         }
 
-        fprintf(stderr, "\n\nCurrent buffer data: %s\n", buffer.data);
-
         // check direct pointers
         for (uint32_t i = 0; i < POINTERS_PER_INODE; i++) {
             if (write_inode.direct[i]) {
@@ -633,12 +631,10 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
                 write_inode.indirect = fs_allocate_free_block(fs);
             }
 
-            // fprintf(stderr, "\n\nPointer block: %u\n\n", write_inode.indirect);
-
             Block pointerBlock;
             disk_read(fs->disk, write_inode.indirect, pointerBlock.data);
 
-            // loop through indirect block
+            // loop through indirect block to find free pointer
             for (uint32_t i = 0; i < POINTERS_PER_BLOCK; i++) {
                 if (!pointerBlock.pointers[i]) {
 
@@ -646,16 +642,21 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
                     ssize_t block_num = fs_allocate_free_block(fs);
                     pointerBlock.pointers[i] = block_num;
 
-                    // fprintf(stderr, "\n\nIndirect link [%u]: %u\n\n", i, pointerBlock.pointers[i]);
+                    fprintf(stderr, "\n\nIndirect link [%u]: %u\n\n", i, pointerBlock.pointers[i]);
                     
                     // write buffer to block @ block_num
                     bytes_written += disk_write(fs->disk, block_num, buffer.data);
 
-                    // exit loop
+                    // update indirect pointer block and exit loop
+                    disk_write(fs->disk, write_inode.indirect, pointerBlock.data);
                     break;
                 }
             }
         }
+    }
+
+    if (!fs_save_inode(fs, inode_number, &write_inode)) {
+        return -1;
     }
 
     return bytes_written;

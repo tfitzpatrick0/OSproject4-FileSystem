@@ -30,7 +30,6 @@ bool    disk_sanity_check(Disk *disk, size_t blocknum, const char *data);
  *              on failure).
  **/
 
-
 Disk *	disk_open(const char *path, size_t blocks) {
 
     // allocate disk structure

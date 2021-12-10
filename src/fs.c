@@ -336,7 +336,9 @@ bool    fs_remove(FileSystem *fs, size_t inode_number) {
 
     // free direct blocks
     for (uint32_t i = 0; i < POINTERS_PER_INODE; i++) {
-        fs->free_blocks[remove_inode.direct[i]] = true;
+        if (remove_inode.direct[i] != 0) {
+            fs->free_blocks[remove_inode.direct[i]] = true;
+        }
         remove_inode.direct[i] = 0;
     }
 
@@ -426,8 +428,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     size_t before_offset = offset;
 
     uint32_t direct_num;
-    uint32_t indirect_num;
-    
+    uint32_t indirect_num;   
     
     for (direct_num = 0; direct_num < POINTERS_PER_INODE; ++direct_num) {
         // *** could use free list
@@ -458,7 +459,7 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
             fprintf(stderr, "fs_read: indirect block not found, offset too large\n");
             return -1;
         }
-       
+
         // read in indirect pointer block 
         disk_read(fs->disk, inode.indirect, pointerBlock.data);
 
@@ -573,7 +574,6 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
     strcpy(data, tempData);
     return strlen(data);
 
-
 }
 
 /**
@@ -591,9 +591,12 @@ ssize_t fs_read(FileSystem *fs, size_t inode_number, char *data, size_t length, 
  * @param       data            Buffer with data to copy
  * @param       length          Number of bytes to write.
  * @param       offset          Byte offset from which to begin writing.
- * @return      Number of bytes read (-1 on error).
+ * @return      Number of bytes written (-1 on error).
  **/
 ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length, size_t offset) {
+
+    //fprintf(stderr, "Starting fs_write\n");
+    //fprintf(stderr, "length = %u\n", length);
 
     if (!fs || length < 0 || offset < 0) {
         return -1;
@@ -605,18 +608,29 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
     }
 
     ssize_t bytes_written = 0;
-    bool use_indirect = true;
+    Block buffer;
 
     uint32_t total_blks = (length / BLOCK_SIZE);
-    if ((length % BLOCK_SIZE) != 0) {
+    uint32_t remainder = (length % BLOCK_SIZE);
+
+    if (remainder != 0) {
         total_blks++;
     }
 
-    Block buffer;
-    strcpy(buffer.data, data);
-    fprintf(stderr, "\n\n\n\nBuffer data: %s\n", buffer.data);
+    //fprintf(stderr, "total_blks = %u, remainder = %u\n", total_blks, remainder);
 
     for (uint32_t blks = 0; blks < total_blks; blks++) {
+
+        bool use_indirect = true;
+
+        if ((blks < total_blks-1) || remainder == 0) {
+            strncpy(buffer.data, data+(blks*BLOCK_SIZE), BLOCK_SIZE);
+            bytes_written += BLOCK_SIZE;
+        }
+        else {
+            strncpy(buffer.data, data+(blks*BLOCK_SIZE), remainder);
+            bytes_written += remainder;
+        }
 
         // check direct pointers
         for (uint32_t i = 0; i < POINTERS_PER_INODE; i++) {
@@ -632,7 +646,7 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
                 // fprintf(stderr, "\n\nDirect link [%u]: %u\n\n", i, write_inode.direct[i]);
 
                 // write buffer to block @ block_num
-                bytes_written += disk_write(fs->disk, block_num, buffer.data);
+                disk_write(fs->disk, block_num, buffer.data);
 
                 // set use_indirect flag to false
                 use_indirect = false;
@@ -650,28 +664,34 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
                 write_inode.indirect = fs_allocate_free_block(fs);
             }
 
-            // fprintf(stderr, "\n\nPointer block: %u\n\n", write_inode.indirect);
-
             Block pointerBlock;
             disk_read(fs->disk, write_inode.indirect, pointerBlock.data);
 
-            // loop through indirect block
+            // loop through indirect block to find free pointer
             for (uint32_t i = 0; i < POINTERS_PER_BLOCK; i++) {
                 if (!pointerBlock.pointers[i]) {
 
                     // find available block
                     ssize_t block_num = fs_allocate_free_block(fs);
                     pointerBlock.pointers[i] = block_num;
-
-                    // fprintf(stderr, "\n\nIndirect link [%u]: %u\n\n", i, pointerBlock.pointers[i]);
                     
                     // write buffer to block @ block_num
-                    bytes_written += disk_write(fs->disk, block_num, buffer.data);
+                    disk_write(fs->disk, block_num, buffer.data);
+
+                    // update indirect pointer block and exit loop
+                    disk_write(fs->disk, write_inode.indirect, pointerBlock.data);
+                    break;
                 }
             }
         }
     }
 
+    write_inode.size += bytes_written;
+    if (!fs_save_inode(fs, inode_number, &write_inode)) {
+        return -1;
+    }
+
+    //fprintf(stderr, "About to return\n\n");
     return bytes_written;
 }
 
@@ -721,7 +741,6 @@ void    disk_clear_data(Disk *disk) {
         disk_write(disk, j, block.data);
     }
 }
-
 
 // helper function to load inode @ inode_number into node
 bool    fs_load_inode(FileSystem *fs, size_t inode_number, Inode *node) {  

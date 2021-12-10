@@ -88,21 +88,6 @@ void    fs_debug(Disk *disk) {
     printf("\n");
 }
 
-/*
-* in disk.c
-*
-// helper function to clear data other than super block
-void disk_clear_data(Disk *disk) {
-    Block empty;
-    for (int i = 0; i < BLOCK_SIZE; ++i) {
-        empty.data[i] = 0;
-    }
-    for (size_t j = 1; j < disk->blocks; ++j) {
-        disk_write(disk, j, empty.data);
-    }
-}
-*/
-
 /**
  * Format Disk by doing the following:
  *
@@ -591,85 +576,79 @@ ssize_t fs_write(FileSystem *fs, size_t inode_number, char *data, size_t length,
         return -1;
     }
 
-    fprintf(stderr, "No segfault at start, offset = %u\n", offset);
-
     Inode write_inode;
     if (!fs_load_inode(fs, inode_number, &write_inode)) {
         return -1;
     }
 
-    fprintf(stderr, "load inode works\n");
-
     ssize_t bytes_written = 0;
+    bool use_indirect = true;
 
-    size_t total_blocks = (length / BLOCK_SIZE) + 1;
-    size_t direct_block = 0;
-    // Block pointerBlock;
-
-    fprintf(stderr, "total_blocks = %u\n", total_blocks);
+    uint32_t total_blks = (length / BLOCK_SIZE);
+    if ((length % BLOCK_SIZE) != 0) {
+        total_blks++;
+    }
 
     Block buffer;
-    fprintf(stderr, "Before strncpy\n");
-    strncpy(buffer.data, data, BUFSIZ*4);
-    fprintf(stderr, "Buffer: %s\n", buffer.data);
+    strcpy(buffer.data, data);
+    fprintf(stderr, "\n\n\n\nBuffer data: %s\n", buffer.data);
 
-    if (!write_inode.indirect) {
-        // allocate a block
-        ssize_t block_num = fs_allocate_free_block(fs);
-        
-        // inode tracks block as a direct block
-        write_inode.direct[0] = block_num;
+    for (uint32_t blks = 0; blks < total_blks; blks++) {
 
-        fprintf(stderr, "Allocated block: %u\n", block_num);
+        // check direct pointers
+        for (uint32_t i = 0; i < POINTERS_PER_INODE; i++) {
+            if (write_inode.direct[i]) {
+                continue;
+            }
+            else {
+                // find available block
+                ssize_t block_num = fs_allocate_free_block(fs);
 
-        // write to the block
-        bytes_written += disk_write(fs->disk, block_num, buffer.data);
+                // add block_num to direct pointers list
+                write_inode.direct[i] = block_num;
+                // fprintf(stderr, "\n\nDirect link [%u]: %u\n\n", i, write_inode.direct[i]);
 
-        fprintf(stderr, "Write success\n");
-    }
+                // write buffer to block @ block_num
+                bytes_written += disk_write(fs->disk, block_num, buffer.data);
 
-    /*
-    for (uint32_t i = 0; i < total_blocks; i++) {
+                // set use_indirect flag to false
+                use_indirect = false;
 
-        Block buffer;
-        fprintf(stderr, "Before strncpy\n");
-        strncpy(buffer.data, data, BUFSIZ*4);
-        fprintf(stderr, "Buffer: %s\n", buffer.data);
-
-        if (!write_inode.indirect) {
-            // allocate a block
-            ssize_t block_num = fs_allocate_free_block(fs);
-            
-            // inode tracks block as a direct block
-            write_inode.direct[i] = block_num;
-
-            fprintf(stderr, "Allocated block: %u\n", block_num);
-
-            // write to the block
-            bytes_written += disk_write(fs->disk, block_num, buffer.data);
-
-            fprintf(stderr, "Write success\n");
-
-            // set an indirect block if 5 direct blocks are allocated
-            // 0 index: index 4 is fifth block
-            if (i == 4) {
-                write_inode.indirect = fs_allocate_free_block(fs);
+                // exit loop
+                break;
             }
         }
-        else {
-            // allocate a block
-            ssize_t block = fs_allocate_free_block(fs);
 
-            // pointerBlock tracks block as an indirect block
-            pointerBlock.pointers[i-5] = block;
+        // Use indirect blocks if direct pointers are full
+        if (use_indirect) {
 
-            // write to the block
-            bytes_written += disk_write(fs, block, buffer.data);
+            if (!write_inode.indirect) {
+                // allocate block to hold indirect pointers
+                write_inode.indirect = fs_allocate_free_block(fs);
+            }
+
+            // fprintf(stderr, "\n\nPointer block: %u\n\n", write_inode.indirect);
+
+            Block pointerBlock;
+            disk_read(fs->disk, write_inode.indirect, pointerBlock.data);
+
+            // loop through indirect block
+            for (uint32_t i = 0; i < POINTERS_PER_BLOCK; i++) {
+                if (!pointerBlock.pointers[i]) {
+
+                    // find available block
+                    ssize_t block_num = fs_allocate_free_block(fs);
+                    pointerBlock.pointers[i] = block_num;
+
+                    // fprintf(stderr, "\n\nIndirect link [%u]: %u\n\n", i, pointerBlock.pointers[i]);
+                    
+                    // write buffer to block @ block_num
+                    bytes_written += disk_write(fs->disk, block_num, buffer.data);
+                }
+            }
         }
     }
-    */
 
-    fprintf(stderr, "About to return, bytes_written = %d\n", bytes_written);
     return bytes_written;
 }
 

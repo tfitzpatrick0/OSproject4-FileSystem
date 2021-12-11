@@ -4,16 +4,19 @@ This is [Project 04] of [CSE.30341.FA21].
 
 ## Students
 
-1. Domer McDomerson (dmcdomer@nd.edu)
-2. Belle Fleur (bfleur@nd.edu)
+1. Tim Fitzpatrick (tfitzpa3@nd.edu)
+2. Parker Scanlon (pscanlo2@nd.edu)
 
 ## Demonstration
 
-> Link to **video demonstration** of **simple file system**.
+> https://youtu.be/wczI6FTN6yI
 
 ## Errata
 
 > Describe any known errors, bugs, or deviations from the requirements.
+
+Does not pass one test for copyin 200. Should not have memory issues.
+
 
 [Project 04]:       https://www3.nd.edu/~pbui/teaching/cse.30341.fa21/project04.html
 [CSE.30341.FA21]:   https://www3.nd.edu/~pbui/teaching/cse.30341.fa21/

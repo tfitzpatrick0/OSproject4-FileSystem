@@ -1,22 +1,17 @@
 # Project 04: Simple File System
 
-This is [Project 04] of [CSE.30341.FA21].
+This is [Project 04] of [CSE.30341.FA21] - Operating Systems
 
-## Students
+## Team Members
 
-1. Tim Fitzpatrick (tfitzpa3@nd.edu)
-2. Parker Scanlon (pscanlo2@nd.edu)
-
-## Demonstration
-
-> https://youtu.be/wczI6FTN6yI
+1. Tim Fitzpatrick
+2. Parker Scanlon
 
 ## Errata
 
 > Describe any known errors, bugs, or deviations from the requirements.
 
-Does not pass one test for copyin 200. Should not have memory issues.
-
+There is one test that does not pass for 'copyin 200'. There are no memory issues.
 
 [Project 04]:       https://www3.nd.edu/~pbui/teaching/cse.30341.fa21/project04.html
 [CSE.30341.FA21]:   https://www3.nd.edu/~pbui/teaching/cse.30341.fa21/

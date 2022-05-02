@@ -29,8 +29,36 @@ bool    disk_sanity_check(Disk *disk, size_t blocknum, const char *data);
  * @return      Pointer to newly allocated and configured Disk structure (NULL
  *              on failure).
  **/
+
 Disk *	disk_open(const char *path, size_t blocks) {
-    return NULL;
+
+    // allocate disk structure
+    Disk *disk = malloc(sizeof(Disk));
+    
+    //setting data
+    disk->blocks = blocks;
+    disk->reads = 0;
+    disk->writes = 0;
+
+    // opening file descriptor
+    int fd = open(path, O_RDWR | O_CREAT, 0600);
+    if (fd < 0) {
+        fprintf(stderr, "disk_open: open: %s\n", strerror(errno));
+        free(disk);
+        return NULL;
+    }
+
+    // truncating fd
+    if (ftruncate(fd, blocks * BLOCK_SIZE)) {
+        fprintf(stderr, "disk_open: ftruncate: %s\n", strerror(errno));
+        free(disk);
+        return NULL;
+    }
+
+    // setting the fd
+    disk->fd = fd;
+
+    return disk;
 }
 
 /**
@@ -45,6 +73,23 @@ Disk *	disk_open(const char *path, size_t blocks) {
  * @param       disk        Pointer to Disk structure.
  */
 void	disk_close(Disk *disk) {
+
+    // close fd
+    if (close(disk->fd) < 0) {
+        fprintf(stderr, "disk_close: close: %s\n", strerror(errno));
+    }
+
+    // report reads and writes
+
+    // turning off for debuging function testing
+    // these cause tests to fail
+    /*
+    printf("\nreads: %zu", disk->reads);
+    printf("\nwrites: %zu", disk->writes);
+    */
+
+    // free disk
+    free(disk);
 }
 
 /**
@@ -65,7 +110,32 @@ void	disk_close(Disk *disk) {
  *              (BLOCK_SIZE on success, DISK_FAILURE on failure).
  **/
 ssize_t disk_read(Disk *disk, size_t block, char *data) {
-    return DISK_FAILURE;
+    
+    // make sure disk exists
+    if (disk == NULL) {
+        return DISK_FAILURE;
+    }
+
+    // do sanity check
+    if (!disk_sanity_check(disk, block, data)) {
+        return DISK_FAILURE;
+    }
+
+    // look for the block
+    if (lseek(disk->fd, block * BLOCK_SIZE, SEEK_SET) < 0) {
+        fprintf(stderr, "disk_read: lseek: %s\n", strerror(errno));
+        return DISK_FAILURE;
+    }
+
+    // read the block
+    if (read(disk->fd, data, BLOCK_SIZE) != BLOCK_SIZE) {
+        fprintf(stderr, "disk_read: unable to read: %s\n", strerror(errno));
+        return DISK_FAILURE;
+    }
+
+    ++disk->reads;
+
+    return BLOCK_SIZE;
 }
 
 /**
@@ -86,7 +156,31 @@ ssize_t disk_read(Disk *disk, size_t block, char *data) {
  *              (BLOCK_SIZE on success, DISK_FAILURE on failure).
  **/
 ssize_t disk_write(Disk *disk, size_t block, char *data) {
-    return DISK_FAILURE;
+
+    // make sure disk exists
+    if (disk == NULL) {
+        return DISK_FAILURE;
+    }
+
+    // sanity check
+    if (!disk_sanity_check(disk, block, data)) {
+        return DISK_FAILURE;
+    }
+
+    // look for the block
+    if (lseek(disk->fd, block * BLOCK_SIZE, SEEK_SET) < 0) {
+        fprintf(stderr, "disk_write: lseek: %s\n", strerror(errno));
+        return DISK_FAILURE;
+    }
+
+    // write the block
+    if (write(disk->fd, data, BLOCK_SIZE) != BLOCK_SIZE) {
+        fprintf(stderr, "disk_write: unable to write: %s\n", strerror(errno));
+        return DISK_FAILURE;
+    }
+
+    ++disk->writes;
+    return BLOCK_SIZE;
 }
 
 /* Internal Functions */
@@ -108,7 +202,29 @@ ssize_t disk_write(Disk *disk, size_t block, char *data) {
  *              (true for safe, false for unsafe).
  **/
 bool    disk_sanity_check(Disk *disk, size_t block, const char *data) {
-    return false;
+    
+    // check for valid disk
+    if (disk == NULL) {
+        return DISK_FAILURE;
+    }
+
+    // check that block is valid
+    // case - sought block is positive
+    if (block < 0) {
+        return false;
+    }
+
+    // case - sought block is valid
+    if (block >= disk->blocks) {
+        return false;
+    }
+
+    // case - data buffer is valid
+    if (data == NULL) {
+        return false;
+    }
+    
+    return true;
 }
 
 /* vim: set expandtab sts=4 sw=4 ts=8 ft=c: */

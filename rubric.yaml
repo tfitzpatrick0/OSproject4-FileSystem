@@ -1,0 +1,68 @@
+Source Code:
+  A. General:
+    1. Builds and cleans without warnings or errors:
+      Score: 1.0
+    2. Manages resources such as memory and files appropriately:
+      Score: 1.0
+    4. Is consistent, readable, and organized:
+      Score: 1.0
+    5. Has regular commits and submitted on-time:
+      Score: 1.0
+  B. Disk:
+    1. Open operation performs correctly:
+      Comments:
+      - Check malloc
+      Score: 0.75
+    2. Close operation performs correctly:
+      Score: 0.5
+    3. Read operation performs correctly:
+      Score: 1.0
+    4. Write operation performs correctly:
+      Score: 1.0
+  C. File System:
+    1. Debug operation performs correctly:
+      Comments:
+      - Check disk_read
+      Score: 1.75
+    2. Format operation performs correctly:
+      Comments:
+      - Check disk_write
+      Score: 0.75
+    3. Mount operation performs correctly:
+      Comments:
+      - Check malloc
+      Score: 1.25
+    4. Create operation performs correctly:
+      Score: 1.5
+    5. Remove operation performs correctly:
+      Score: 1.5
+    6. Stat operation performs correctly:
+      Score: 0.5
+    7. Cat operation performs correctly:
+      Score: 1.5
+    8. Copyout operation performs correctly:
+      Comments:
+      - Don't need tempData
+      - Don't use str* functions (only works on text files and not binary data)
+      Score: 1.75
+    9. Copyin operation performs correctly:
+      Comments:
+      - Fails image.200
+      - Check disk_write
+      Score: 1.0
+
+Reflection:
+  A. Group Video Demonstration:
+    1. Exhibits reasonable audio and video quality:
+      Score: 0.5
+    2. Demonstrates library passing automated tests:
+      Score: 1.0
+    3. Explains what happens during open and read system calls:
+      Score: 1.0
+    4. Discusses errata, quirks, or unresolved issues:
+      Score: 0.75
+    5. Discusses what the group learned from the project:
+      Score: 0.75
+
+Total: 18.75 + 4.0 = 22.75
+

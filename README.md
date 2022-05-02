@@ -9,7 +9,7 @@ This is [Project 04] of [CSE.30341.FA21] - Operating Systems
 
 ## Errata
 
-> Describe any known errors, bugs, or deviations from the requirements.
+> Describe any known errors or bugs
 
 There is one test that does not pass for 'copyin 200'. There are no memory issues.
 

@@ -1,4 +1,4 @@
-# Simple File System Project
+# OS - Simple File System Project
 
 This is [Project 04] of [CSE.30341.FA21] - Operating Systems
 

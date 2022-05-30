@@ -1,3 +1,5 @@
+.DS_Store
+
 bin/unit_*
 bin/run_*.sh
 bin/sfssh

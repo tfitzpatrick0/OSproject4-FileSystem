@@ -9,7 +9,7 @@ This is [Project 04] of [CSE.30341.FA21] - Operating Systems
 
 ## Errata
 
-> Describe any known errors or bugs
+> Describe any known errors, bugs, or deviations from the requirements.
 
 There is a minor error with 'copyin image.200' where some elements of the disk image are not loaded correctly. There are no memory issues.
 
